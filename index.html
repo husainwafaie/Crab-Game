@@ -38,10 +38,34 @@
             cursor: pointer;
             border-radius: 5px;
         }
+        #pauseButton {
+            background-color: rgba(0, 0, 0, 0.5);
+            border: none;
+            color: white;
+            font-size: 34px;
+            cursor: pointer;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #gameCanvas {
+            cursor: default;
+        }
+        #gameCanvas.clickable {
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <button id="pauseButton"><i class="fas fa-pause"></i></button>
     <div id="welcomePopup">
         <h1 style="font-size: 2.8em; margin-bottom: 20px;">Underwater Crab Adventure</h1>
         <p style="font-size: 1.2em;">Help the crab navigate through obstacles!</p>
@@ -57,6 +81,7 @@
         const ctx = canvas.getContext('2d');
         const welcomePopup = document.getElementById('welcomePopup');
         const startButton = document.getElementById('startButton');
+        const pauseButton = document.getElementById('pauseButton');
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -74,6 +99,7 @@
         let gameOver = false;
         let gameSpeed = 5; // Increased initial game speed
         let gameStarted = false;
+        let isPaused = false;
 
         const bubbles = Array(20).fill().map(() => ({
             x: Math.random() * canvas.width,
@@ -423,8 +449,65 @@
             }
         }
 
-        function gameLoop() {
+        function drawPauseOverlay() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw "Paused" text
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 48px Arial';
+            ctx.fillText('Paused', canvas.width / 2 - 86, canvas.height / 2 - 50);
+            
+            // Draw resume button
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(canvas.width / 2 - 60, canvas.height / 2 + 10, 120, 40);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText('Resume', canvas.width / 2 - 40, canvas.height / 2 + 35);
+
+            // Add this line to set a custom attribute for the resume button area
+            canvas.setAttribute('data-resume-button', `${canvas.width / 2 - 40},${canvas.height / 2 + 10},120,40`);
+        }
+
+        function countdown() {
+            return new Promise(resolve => {
+                let count = 3;
+                const countdownInterval = setInterval(() => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawBackground();
+                    drawCrab();
+                    drawObstacles();
+                    drawScore();
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 72px Arial';
+                    ctx.fillText(count, canvas.width / 2 - 20, canvas.height / 2);
+                    
+                    count--;
+                    if (count < 0) {
+                        clearInterval(countdownInterval);
+                        resolve();
+                    }
+                }, 1000);
+            });
+        }
+
+        async function togglePause() {
             if (!gameStarted || gameOver) return;
+            
+            isPaused = !isPaused;
+            if (isPaused) {
+                pauseButton.innerHTML = '<i class="fas fa-play"></i>';
+                drawPauseOverlay();
+            } else {
+                pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
+                await countdown();
+                gameLoop();
+            }
+        }
+
+        function gameLoop() {
+            if (!gameStarted || gameOver || isPaused) return;
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -451,9 +534,9 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'white';
             ctx.font = 'bold 48px Arial';
-            ctx.fillText('Game Over!', canvas.width / 2 - 120, canvas.height / 2 - 50);
+            ctx.fillText('Game Over!', canvas.width / 2 - 140, canvas.height / 2 - 50);
             ctx.font = 'bold 24px Arial';
-            ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 70, canvas.height / 2);
+            ctx.fillText(`Final Score: ${score}`, canvas.width / 2 - 90, canvas.height / 2);
             
             // Draw retry button
             ctx.fillStyle = '#4CAF50';
@@ -509,10 +592,47 @@
                     y > canvas.height / 2 + 30 && y < canvas.height / 2 + 70) {
                     startGame();
                 }
+            } else if (isPaused) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                // Check if click is within resume button
+                if (x > canvas.width / 2 - 60 && x < canvas.width / 2 + 60 &&
+                    y > canvas.height / 2 + 10 && y < canvas.height / 2 + 50) {
+                    togglePause();
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            if (isPaused) {
+                const [buttonX, buttonY, buttonWidth, buttonHeight] = canvas.getAttribute('data-resume-button').split(',').map(Number);
+                
+                if (x > buttonX && x < buttonX + buttonWidth &&
+                    y > buttonY && y < buttonY + buttonHeight) {
+                    canvas.classList.add('clickable');
+                } else {
+                    canvas.classList.remove('clickable');
+                }
+            } else if (gameOver) {
+                if (x > canvas.width / 2 - 60 && x < canvas.width / 2 + 60 &&
+                    y > canvas.height / 2 + 30 && y < canvas.height / 2 + 70) {
+                    canvas.classList.add('clickable');
+                } else {
+                    canvas.classList.remove('clickable');
+                }
+            } else {
+                canvas.classList.remove('clickable');
             }
         });
 
         startButton.addEventListener('click', startGame);
+        pauseButton.addEventListener('click', togglePause);
 
         document.addEventListener('keydown', (event) => {
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
